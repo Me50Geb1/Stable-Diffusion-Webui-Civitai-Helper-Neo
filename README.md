@@ -3,9 +3,6 @@
 [日本語](README.jp.md)  
 [한국어(ChatGPT)](README.kr.md)  
 
-## About Civitai Helper2: Model Info Helper
-check here for Civitai Helper 2's update:
-[about_version2](about_version2.md)  
 
 # Notice
 **This extension request latest SD webui v1.6.x, update it before using this extension. And also re-lanuch SD webui after installing(not just reload UI). If you have an issue, check console log window's detail and read [common issue](#common-issue) part**   
@@ -245,6 +242,9 @@ Since v1.5.5, we've already optimized the SHA256 function to the top. So the onl
 
 
 # Change Log
+## v1.12.0
+* Add "Civitai Domain" to Options on Setting page, since now civitai has 2 domains: `.com` and `.red`. `.red` is for nsfw things.
+
 ## v1.11.2
 * Add "install.py" to install package "pysocks" for using socks for proxy.  
 

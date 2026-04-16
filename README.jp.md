@@ -3,9 +3,6 @@
 [English](README.md)  
 [한국어(ChatGPT)](README.kr.md)  
 
-## About Civitai Helper2: Model Info Helper
-Civitai Helper 2は、**ModelInfo Helper**に改名されます。現在開発中です。デモをご覧ください:
-[YouTube](https://youtu.be/mPcKwQDDH8s)  
 
 # お知らせ
 **この拡張機能は現在、非常に安定しています。もし問題があれば、コンソールログの詳細を確認し、[よくある質問](#よくある質問)を確認してください。**   

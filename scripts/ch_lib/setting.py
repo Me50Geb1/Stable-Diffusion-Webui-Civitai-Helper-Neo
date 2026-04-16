@@ -18,6 +18,7 @@ data = {
     "general":{
         "open_url_with_js": True,
         "proxy": "",
+        "civitai_domain": "civitai.com"
     },
     "tool":{
     }
@@ -79,11 +80,15 @@ def load():
     if "check_new_ver_exist_in_all_folder" not in data["model"].keys():
         data["general"]["check_new_ver_exist_in_all_folder"] = False
 
+    if "civitai_domain" not in data["general"].keys():
+        data["general"]["civitai_domain"] = "civitai.com"
+
+
 
     return
 
 # save setting from parameter
-def save_from_input(max_size_preview, skip_nsfw_preview, open_url_with_js, proxy, check_new_ver_exist_in_all_folder):
+def save_from_input(max_size_preview, skip_nsfw_preview, open_url_with_js, proxy, check_new_ver_exist_in_all_folder, civitai_domain):
     global data
     data = {
         "model":{
@@ -94,6 +99,7 @@ def save_from_input(max_size_preview, skip_nsfw_preview, open_url_with_js, proxy
         "general":{
             "open_url_with_js": open_url_with_js,
             "proxy": proxy,
+            "civitai_domain": civitai_domain,
         },
         "tool":{
         }

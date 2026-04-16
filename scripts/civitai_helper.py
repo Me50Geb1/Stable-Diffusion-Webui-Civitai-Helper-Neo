@@ -46,6 +46,7 @@ def on_ui_settings():
     shared.opts.add_option("ch_check_new_ver_exist_in_all_folder", shared.OptionInfo(True, "When checking new model version, check new version existing in all model folders", gr.Checkbox, {"interactive": True}, section=ch_section))
     shared.opts.add_option("ch_proxy", shared.OptionInfo("", "Civitai Helper Proxy", gr.Textbox, {"interactive": True, "lines":1, "info":"format: socks5h://127.0.0.1:port"}, section=ch_section))
     shared.opts.add_option("ch_civiai_api_key", shared.OptionInfo("", "Civitai API Key", gr.Textbox, {"interactive": True, "lines":1, "info":"check doc:https://github.com/zixaphir/Stable-Diffusion-Webui-Civitai-Helper/tree/master#api-key"}, section=ch_section))
+    shared.opts.add_option("ch_civitai_domain", shared.OptionInfo("civitai.com", "Civitai Domain", gr.Radio, {"interactive": True, "choices": ["civitai.com", "civitai.red"]}, section=ch_section))
 
 def on_ui_tabs():
     # init
@@ -72,6 +73,7 @@ def on_ui_tabs():
     check_new_ver_exist_in_all_folder = shared.opts.data.get("ch_check_new_ver_exist_in_all_folder", False)
     proxy = shared.opts.data.get("ch_proxy", "")
     civitai_api_key = shared.opts.data.get("ch_civiai_api_key", "")
+    civitai_domain = shared.opts.data.get("ch_civitai_domain", "civitai.com")
 
     util.printD("Settings:")
     util.printD("max_size_preview: " + str(max_size_preview))
@@ -88,6 +90,10 @@ def on_ui_tabs():
         util.def_headers["Authorization"] = f"Bearer {civitai_api_key}"
 
     util.printD(f"use civitai api key: {has_api_key}")
+
+    # set civitai_domain
+    util.civitai_domain = civitai_domain
+    util.printD(f"civitai domain: {util.civitai_domain}")
 
     # set proxy
     if proxy:

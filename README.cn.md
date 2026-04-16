@@ -1,7 +1,3 @@
-## 关于Civitai Helper2: Model Info Helper
-近况请参考：[about_version2](about_version2.md) 
-
-
 # Civitai Helper
 Stable Diffusion Webui 扩展Civitai助手，用于更轻松的管理和使用Civitai模型。
 
