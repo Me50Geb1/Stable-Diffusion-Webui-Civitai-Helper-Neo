@@ -37,22 +37,48 @@ vae_suffix = ".vae"
 
 
 # get cusomter model path
+def _first_existing_dir(*values):
+    for value in values:
+        if not value:
+            continue
+
+        if isinstance(value, (list, tuple, set)):
+            result = _first_existing_dir(*value)
+            if result:
+                return result
+            continue
+
+        path = os.fspath(value)
+        if os.path.isdir(path):
+            return path
+
+
 def get_custom_model_folder():
     util.printD("Get Custom Model Folder")
 
     global folders
 
-    if shared.cmd_opts.embeddings_dir and os.path.isdir(shared.cmd_opts.embeddings_dir):
-        folders["ti"] = shared.cmd_opts.embeddings_dir
+    embeddings_dir = _first_existing_dir(getattr(shared.cmd_opts, "embeddings_dir", None))
+    if embeddings_dir:
+        folders["ti"] = embeddings_dir
 
-    if shared.cmd_opts.hypernetwork_dir and os.path.isdir(shared.cmd_opts.hypernetwork_dir):
-        folders["hyper"] = shared.cmd_opts.hypernetwork_dir
+    hypernetwork_dir = _first_existing_dir(getattr(shared.cmd_opts, "hypernetwork_dir", None))
+    if hypernetwork_dir:
+        folders["hyper"] = hypernetwork_dir
 
-    if shared.cmd_opts.ckpt_dir and os.path.isdir(shared.cmd_opts.ckpt_dir):
-        folders["ckp"] = shared.cmd_opts.ckpt_dir
+    ckpt_dir = _first_existing_dir(
+        getattr(shared.cmd_opts, "ckpt_dir", None),
+        getattr(shared.cmd_opts, "ckpt_dirs", None),
+    )
+    if ckpt_dir:
+        folders["ckp"] = ckpt_dir
 
-    if shared.cmd_opts.lora_dir and os.path.isdir(shared.cmd_opts.lora_dir):
-        folders["lora"] = shared.cmd_opts.lora_dir
+    lora_dir = _first_existing_dir(
+        getattr(shared.cmd_opts, "lora_dir", None),
+        getattr(shared.cmd_opts, "lora_dirs", None),
+    )
+    if lora_dir:
+        folders["lora"] = lora_dir
 
 
 
