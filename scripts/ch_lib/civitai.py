@@ -19,6 +19,102 @@ url_dict = {
     "hash": f"https://{util.civitai_domain}/api/v1/model-versions/by-hash/"
 }
 
+PREVIEW_STATUS_404_OR_ORIGINAL = "404_or_original"
+_preview_status_file = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+    "civitai_preview_status.json",
+)
+
+
+def _preview_status_key(model_path: str) -> str:
+    """Build the same normalized model key used by Extra Networks cards."""
+    if not model_path:
+        return ""
+
+    abs_path = os.path.abspath(model_path)
+    best_match = None
+    for model_type in model.folders.keys():
+        for root in model.get_model_roots(model_type):
+            try:
+                root_abs = os.path.abspath(root)
+                common = os.path.commonpath([abs_path, root_abs])
+            except (OSError, ValueError):
+                continue
+            if os.path.normcase(common) != os.path.normcase(root_abs):
+                continue
+
+            relative_path = os.path.relpath(abs_path, root_abs).replace("\\", "/")
+            candidate = (len(root_abs), f"{model_type}|{relative_path.lower()}")
+            if best_match is None or candidate[0] > best_match[0]:
+                best_match = candidate
+
+    return best_match[1] if best_match else ""
+
+
+def load_preview_status() -> dict:
+    try:
+        if os.path.isfile(_preview_status_file):
+            with open(_preview_status_file, "r", encoding="utf-8") as status_file:
+                data = json.load(status_file)
+                if isinstance(data, dict):
+                    return data
+    except (OSError, json.JSONDecodeError) as error:
+        util.printD("Failed to load preview status cache: " + str(error))
+    return {}
+
+
+def _save_preview_status(data: dict):
+    try:
+        temporary_path = _preview_status_file + ".tmp"
+        with open(temporary_path, "w", encoding="utf-8") as status_file:
+            json.dump(data, status_file, ensure_ascii=False, indent=2, sort_keys=True)
+        os.replace(temporary_path, _preview_status_file)
+    except OSError as error:
+        util.printD("Failed to save preview status cache: " + str(error))
+
+
+def set_preview_status(model_path: str, status: str):
+    key = _preview_status_key(model_path)
+    if not key:
+        return
+    data = load_preview_status()
+    if data.get(key) != status:
+        data[key] = status
+        _save_preview_status(data)
+
+
+def clear_preview_status(model_path: str):
+    key = _preview_status_key(model_path)
+    if not key:
+        return
+    data = load_preview_status()
+    if key in data:
+        del data[key]
+        _save_preview_status(data)
+
+
+def check_version_availability(version_id):
+    """Return ok, 404, or error without treating a temporary outage as 404."""
+    if not version_id:
+        return "error"
+    try:
+        response = requests.get(
+            url_dict["modelVersionId"] + str(version_id),
+            headers=util.def_headers,
+            proxies=util.proxies,
+            timeout=20,
+        )
+    except requests.RequestException as error:
+        util.printD("Civitai availability check failed: " + str(error))
+        return "error"
+
+    if response.status_code == 404:
+        return "404"
+    if response.ok:
+        return "ok"
+    util.printD("Civitai availability check returned: " + str(response.status_code))
+    return "error"
+
 model_type_dict = {
     "Checkpoint": "ckp",
     "TextualInversion": "ti",
@@ -371,60 +467,79 @@ def get_preview_image_by_model_path(model_path:str, max_size_preview, skip_nsfw_
     sec_preview = base+".preview.png"
     info_file = base + suffix + model.info_ext
 
-    # Check whether an existing preview is actually a readable image.
-    # A failed/interrupted download may leave an empty or truncated file.
-    preview_ok = False
-    if os.path.isfile(sec_preview):
+    # A real or manually supplied preview always takes priority.
+    for existing_preview in (first_preview, sec_preview):
+        if not os.path.isfile(existing_preview):
+            continue
         try:
-            if os.path.getsize(sec_preview) > 0:
-                with Image.open(sec_preview) as preview_image:
+            if os.path.getsize(existing_preview) > 0:
+                with Image.open(existing_preview) as preview_image:
                     preview_image.verify()
-                preview_ok = True
-        except Exception as e:
-            util.printD("Invalid preview image detected: " + sec_preview)
-            util.printD("Reason: " + str(e))
-            try:
-                os.remove(sec_preview)
-            except Exception as remove_error:
-                util.printD("Failed to remove invalid preview: " + str(remove_error))
-
-    # check preview image
-    if not preview_ok:
-        # need to download preview image
-        util.printD("Checking preview image for model: " + model_path)
-        # load model_info file
-        if os.path.isfile(info_file):
-            model_info = model.load_model_info(info_file)
-            if not model_info:
-                util.printD("Model Info is empty")
+                clear_preview_status(model_path)
                 return
+        except Exception as error:
+            util.printD("Invalid preview image detected: " + existing_preview)
+            util.printD("Reason: " + str(error))
+            # Only remove the helper-managed preview. Never delete a manual file.
+            if existing_preview == sec_preview:
+                try:
+                    os.remove(existing_preview)
+                except OSError as remove_error:
+                    util.printD("Failed to remove invalid preview: " + str(remove_error))
 
-            if "images" in model_info.keys():
-                if model_info["images"]:
-                    for img_dict in model_info["images"]:
-                        if "nsfw" in img_dict.keys():
-                            if img_dict["nsfw"] and img_dict["nsfw"] != "None":
-                                util.printD("This image is NSFW")
-                                if skip_nsfw_preview:
-                                    util.printD("Skip NSFW image")
-                                    continue
+    util.printD("Checking preview image for model: " + model_path)
+    if not os.path.isfile(info_file):
+        return
 
-                        preview_type = img_dict.get("type")
-                        if preview_type != "image":
-                            util.printD(f"Unsupported preview type: {preview_type}, ignore.")
-                            continue
-                        
-                        if "url" in img_dict.keys():
-                            img_url = img_dict["url"]
-                            if max_size_preview:
-                                # use max width
-                                if "width" in img_dict.keys():
-                                    if img_dict["width"]:
-                                        img_url = get_full_size_image_url(img_url, img_dict["width"])
+    model_info = model.load_model_info(info_file)
+    if not model_info:
+        util.printD("Model Info is empty")
+        return
 
-                            util.download_file(img_url, sec_preview)
-                            # we only need 1 preview image
-                            break
+    version_id = model_info.get("id")
+    if version_id:
+        availability = check_version_availability(version_id)
+        if availability == "404":
+            util.printD("Civitai model version is unavailable (404): " + str(version_id))
+            set_preview_status(model_path, PREVIEW_STATUS_404_OR_ORIGINAL)
+            return
+        if availability == "ok":
+            clear_preview_status(model_path)
+
+    for img_dict in model_info.get("images") or []:
+        if img_dict.get("nsfw") and img_dict.get("nsfw") != "None":
+            util.printD("This image is NSFW")
+            if skip_nsfw_preview:
+                util.printD("Skip NSFW image")
+                continue
+
+        preview_type = img_dict.get("type")
+        if preview_type != "image":
+            util.printD(f"Unsupported preview type: {preview_type}, ignore.")
+            continue
+
+        img_url = img_dict.get("url")
+        if not img_url:
+            continue
+        if max_size_preview and img_dict.get("width"):
+            img_url = get_full_size_image_url(img_url, img_dict["width"])
+
+        util.download_file(img_url, sec_preview)
+        if os.path.isfile(sec_preview):
+            try:
+                if os.path.getsize(sec_preview) > 0:
+                    with Image.open(sec_preview) as preview_image:
+                        preview_image.verify()
+                    clear_preview_status(model_path)
+                    return
+            except Exception as error:
+                util.printD("Downloaded preview validation failed: " + str(error))
+                try:
+                    os.remove(sec_preview)
+                except OSError:
+                    pass
+        # Download failure is intentionally left as the standard NO PREVIEW.
+        return
 
 
 
@@ -715,6 +830,4 @@ def check_models_new_version_by_model_types(model_types:list, delay:float=1, che
     
 
     return new_versions
-
-
 

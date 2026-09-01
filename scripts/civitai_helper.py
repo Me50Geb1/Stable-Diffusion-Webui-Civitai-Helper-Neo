@@ -35,6 +35,27 @@ extension_path = scripts.basedir()
 model.get_custom_model_folder()
 
 
+def _register_preview_status_api(demo, app):
+    """Expose the persisted local preview state to the Extra Networks UI."""
+    async def get_preview_status():
+        return {
+            "status": civitai.load_preview_status(),
+            "placeholder_path": os.path.join(
+                extension_path, "img", "404_or_original.png"
+            ),
+        }
+
+    app.add_api_route(
+        "/civitai-helper-neo/preview-status",
+        get_preview_status,
+        methods=["GET"],
+        name="civitai_helper_neo_preview_status",
+    )
+
+
+script_callbacks.on_app_started(_register_preview_status_api)
+
+
 # Setting now can not be saved from extension tab
 # All settings now must be saved from setting page.
 def on_ui_settings():
@@ -260,6 +281,5 @@ def on_ui_tabs():
 
 script_callbacks.on_ui_settings(on_ui_settings)
 script_callbacks.on_ui_tabs(on_ui_tabs)
-
 
 

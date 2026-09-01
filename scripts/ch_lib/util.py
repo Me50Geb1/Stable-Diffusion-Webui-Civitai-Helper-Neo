@@ -6,7 +6,7 @@ import requests
 import shutil
 
 
-version = "1.12.0-neo-compat4-red"
+version = "1.13.0-neo-compat5-red"
 
 def_headers = {'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
                "Authorization": ""}

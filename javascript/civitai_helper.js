@@ -11,6 +11,91 @@ function ch_img_node_str(path){
     return `<img src='${ch_convert_file_path_to_url(path)}' style="width:24px"/>`;
 }
 
+let ch_preview_status_cache = {};
+let ch_404_preview_path_cache = "";
+
+async function ch_reload_preview_status_cache() {
+    try {
+        const response = await fetch("/civitai-helper-neo/preview-status", {
+            cache: "no-store"
+        });
+        if (!response.ok) {
+            console.log("Civitai Helper: preview status endpoint returned", response.status);
+            return false;
+        }
+        const data = await response.json();
+        ch_preview_status_cache =
+            (data && data.status && typeof data.status === "object") ? data.status : {};
+        ch_404_preview_path_cache =
+            (data && typeof data.placeholder_path === "string") ? data.placeholder_path : "";
+        return true;
+    } catch (error) {
+        console.log("Civitai Helper: failed to load persisted preview status", error);
+        return false;
+    }
+}
+
+function ch_preview_status_key(modelType, searchTerm) {
+    let term = (searchTerm || "").trim()
+        .replaceAll("\\", "/")
+        .replace(/\/+/g, "/")
+        .replace(/^\/+/, "")
+        .toLowerCase();
+    const prefixes = {
+        "lora": ["lora/", "loras/"],
+        "ckp": ["stable-diffusion/", "checkpoints/"],
+        "ti": ["embeddings/"],
+        "hyper": ["hypernetworks/"]
+    };
+    for (const prefix of (prefixes[modelType] || [])) {
+        if (term.startsWith(prefix)) {
+            term = term.substring(prefix.length);
+            break;
+        }
+    }
+    return `${modelType}|${term}`;
+}
+
+function ch_apply_404_or_original_preview(card, modelType, searchTerm) {
+    if (modelType !== "lora" || !card) return;
+
+    const key = ch_preview_status_key(modelType, searchTerm);
+    if (ch_preview_status_cache[key] !== "404_or_original") {
+        const oldFallback = card.querySelector("img.ch-404-or-original-preview");
+        if (!oldFallback) return;
+        const originalSrc = oldFallback.dataset.chOriginalSrc;
+        if (originalSrc) {
+            oldFallback.src = originalSrc;
+            oldFallback.classList.remove("ch-404-or-original-preview");
+            delete oldFallback.dataset.chOriginalSrc;
+            oldFallback.removeAttribute("title");
+        } else {
+            oldFallback.remove();
+        }
+        return;
+    }
+
+    if (!ch_404_preview_path_cache) return;
+    let image = card.querySelector("img.ch-404-or-original-preview");
+    if (!image) {
+        // Forge Neo renders NO PREVIEW as img.preview, so reuse that element to
+        // preserve the native card layout.
+        image = card.querySelector("img.preview");
+        if (image) {
+            image.dataset.chOriginalSrc = image.getAttribute("src") || "";
+            image.classList.add("ch-404-or-original-preview");
+        } else {
+            image = document.createElement("img");
+            image.className = "preview ch-404-or-original-preview";
+            card.insertBefore(image, card.firstChild);
+        }
+    }
+    image.src = ch_convert_file_path_to_url(ch_404_preview_path_cache);
+    image.loading = "lazy";
+    image.alt = "404 or Original";
+    image.title = "Civitai 404 or local/original model - manual preview can be added";
+}
+
 function ch_sd_version() {
     let foot = gradioApp().getElementById("footer");
     if (!foot) {
@@ -946,9 +1031,10 @@ onUiLoaded(() => {
     // notice: javascript can not get response from python side
     // so, these buttons just sent request to python
     // then, python side gonna open url and update prompt text box, without telling js side.
-    function update_card_for_civitai_with_sd1_8(){
+    async function update_card_for_civitai_with_sd1_8(){
 
         console.log("start update_card_for_civitai_with_sd1_8");
+        await ch_reload_preview_status_cache();
 
         //css
         let btn_margin = "0px 5px";
@@ -1054,17 +1140,17 @@ onUiLoaded(() => {
             console.log(`get cards: ${cards.length}`);
             for (let card of cards) {
                 console.log(`current card: ${card.dataset.name}`);
+                need_to_add_buttons = false;
 
                 //get button row
                 button_row = card.querySelector(".button-row");
-
-                //set button_row's flex-wrap to wrap
-                button_row.style.flexWrap = "wrap";
 
                 if (!button_row){
                     console.log("can not find button_row");
                     continue;
                 }
+                //set button_row's flex-wrap to wrap
+                button_row.style.flexWrap = "wrap";
 
                 let atags = button_row.querySelectorAll("a");
                 if (atags && atags.length) {
@@ -1073,12 +1159,6 @@ onUiLoaded(() => {
                     //console.log("no atags");
                     need_to_add_buttons = true;
                 }
-
-                if (!need_to_add_buttons) {
-                    console.log("no need to add buttons");
-                    continue;
-                }
-
 
                 // search_term node
                 // search_term = subfolder path + model name + ext
@@ -1097,6 +1177,13 @@ onUiLoaded(() => {
 
                 //from sd v1.8, need to replace all single '\' into '\\'
                 search_term = search_term.replaceAll("\\", "\\\\");
+
+                ch_apply_404_or_original_preview(card, model_type, search_term);
+
+                if (!need_to_add_buttons) {
+                    console.log("no need to add buttons");
+                    continue;
+                }
 
                 //`data-sort-path` convert all path to lowercase, which can not be used to find model on linux.
                 //so this is not used and fall back to use search_term
@@ -1239,8 +1326,8 @@ onUiLoaded(() => {
 
         }
 
-        //run it once
-        //update_card_for_civitai_with_sd1_8();
+        // Run once after Forge Neo has populated the Extra Networks cards.
+        setTimeout(update_card_for_civitai_with_sd1_8, 1200);
 
     } else {
         for (let prefix of tab_prefix_list) {

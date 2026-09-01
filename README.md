@@ -37,6 +37,9 @@ No additional license is granted here for the original source code.
 - `.part` ファイルを利用した安全なPreviewダウンロード
 - 破損したPreview画像の検出と再取得
 - 複数モデルフォルダのスキャンに対応
+- Civitaiでハッシュまたは既知のモデルバージョンが404の場合、LoRAカードに共通の「404 or ORIGINAL」画像を表示
+- 404判定を `civitai_preview_status.json` に保存し、Forge Neo再起動後も再スキャンなしで反映
+- 実ファイルのPreviewを常に優先し、一時的な通信失敗や画像取得失敗は従来のNO PREVIEW表示を維持
 
 ## Installation
 

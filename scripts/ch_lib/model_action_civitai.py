@@ -52,10 +52,26 @@ def scan_model(scan_model_types, max_size_preview, skip_nsfw_preview):
                         # find a model
                         # get info file
                         info_file = base + civitai.suffix + model.info_ext
-                        # check info file
-                        if not os.path.isfile(info_file):
-                            util.printD("Creating model info for: " + filename)
-                            # get model's sha256
+                        model_info = None
+                        info_exists = os.path.isfile(info_file)
+                        if info_exists:
+                            try:
+                                model_info = model.load_model_info(info_file)
+                            except Exception:
+                                model_info = None
+
+                        local_preview_exists = (
+                            os.path.isfile(base + ".png") or
+                            os.path.isfile(base + ".preview.png")
+                        )
+                        need_hash_lookup = (
+                            not info_exists or
+                            not model_info or
+                            (isinstance(model_info, dict) and not model_info.get("id"))
+                        ) and not local_preview_exists
+
+                        if need_hash_lookup:
+                            util.printD("Checking Civitai hash for: " + filename)
                             hash = util.gen_file_sha256(item)
     
                             if not hash:
@@ -64,19 +80,25 @@ def scan_model(scan_model_types, max_size_preview, skip_nsfw_preview):
                                 return output
                             
                             # use this sha256 to get model info from civitai
-                            model_info = civitai.get_model_info_by_hash(hash)
+                            hash_info = civitai.get_model_info_by_hash(hash)
                             # delay 1 second for ti
                             if model_type == "ti":
                                 util.printD("Delay 1 second for TI")
                                 time.sleep(1)
     
-                            if model_info is None:
-                                output = "Connect to Civitai API service failed. Wait a while and try again"
-                                util.printD(output)
-                                return output+", check console log for detail"
-    
-                            # write model info to file
-                            model.write_model_info(info_file, model_info)
+                            if hash_info == {}:
+                                civitai.set_preview_status(
+                                    item, civitai.PREVIEW_STATUS_404_OR_ORIGINAL
+                                )
+                            elif hash_info:
+                                civitai.clear_preview_status(item)
+                            else:
+                                # Timeouts, rate limits, and server errors must
+                                # remain ordinary NO PREVIEW results.
+                                util.printD("Civitai hash check failed; keeping NO PREVIEW")
+
+                            if hash_info is not None:
+                                model.write_model_info(info_file, hash_info)
     
                         # set model_count
                         model_count = model_count+1

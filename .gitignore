@@ -4,3 +4,5 @@
 *.log
 .DS_Store
 Thumbs.db
+civitai_preview_status.json
+civitai_preview_status.json.tmp
