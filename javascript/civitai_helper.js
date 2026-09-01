@@ -14,20 +14,20 @@ function ch_img_node_str(path){
 function ch_sd_version() {
     let foot = gradioApp().getElementById("footer");
     if (!foot) {
-        return null;
+        return "999.0.0"; // Forge Neo / future UI without legacy footer version markup
     }
 
     let versions = foot.querySelector(".versions");
     if (!versions) {
-        return null;
+        return "999.0.0";
     }
 
     let [webui_version] = versions.getElementsByTagName("a");
     if (!webui_version) {
-        return null;
+        return "999.0.0";
     }
 
-    return extract_version(webui_version.innerHTML);
+    return extract_version(webui_version.innerHTML) || "999.0.0";
 }
 
 function extract_version(text) {
@@ -411,7 +411,10 @@ async function remove_card(event, model_type, search_term){
             let refresh_btn_id = "";
             let refresh_btn = null;
 
-            if (ch_is_sd1_8_or_newer()) {
+            //check sd version
+            let sd_version = ch_sd_version();
+            console.log(`sd version is: ${sd_version}`);
+            if (compareVersions(sd_version, "1.8.0") >= 0) {
                 let js_model_type = convertModelTypeFromPyToJS(model_type);
                 if (!js_model_type){return;}
 
@@ -701,10 +704,8 @@ function ch_dl_model_new_version(event, model_path, version_id, download_url){
  * @returns {number} - 1: version1 is higher, -1: version2 is higher, 0: same version
  */
 function compareVersions(version1, version2) {
-  if (!version1 || !version2) {
-      return -1;
-  }
-
+  version1 = version1 || "999.0.0";
+  version2 = version2 || "0.0.0";
   const v1Parts = version1.split('.').map(Number);
   const v2Parts = version2.split('.').map(Number);
 
@@ -720,35 +721,6 @@ function compareVersions(version1, version2) {
   }
 
   return 0; // same version
-}
-
-function ch_has_sd1_8_extra_networks_layout() {
-    let tab_prefix_list = ["txt2img", "img2img"];
-    let model_type_list = ["textual_inversion", "hypernetworks", "checkpoints", "lora"];
-
-    for (const prefix of tab_prefix_list) {
-        for (const js_model_type of model_type_list) {
-            if (
-                gradioApp().getElementById(prefix + "_" + js_model_type + "_controls") &&
-                gradioApp().getElementById(prefix + "_" + js_model_type + "_cards")
-            ) {
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
-
-function ch_is_sd1_8_or_newer() {
-    let sd_version = ch_sd_version();
-    console.log(`sd version is: ${sd_version}`);
-
-    if (sd_version) {
-        return compareVersions(sd_version, "1.8.0") >= 0;
-    }
-
-    return ch_has_sd1_8_extra_networks_layout();
 }
 
 
@@ -1033,7 +1005,7 @@ onUiLoaded(() => {
                 }
 
                 //check if tab is active
-                if (extra_tab.style.display == "block" || getComputedStyle(extra_tab).display != "none"){
+                if (extra_tab.style.display == "block"){
                     active_extra_tab = extra_tab;
                     active_model_type = js_model_type;
                     break;
@@ -1193,7 +1165,9 @@ onUiLoaded(() => {
     //add refresh button to extra network's toolbar
 
     //from sd version 1.8.0, extra network's toolbar is fully rewrited. This extension need to re-write this part too.
-    if (ch_is_sd1_8_or_newer()){
+    let sd_version = ch_sd_version();
+    console.log(`sd version is: ${sd_version}`);
+    if (compareVersions(sd_version, "1.8.0") >= 0){
         console.log("get sd version v1.8.0+");
 
         for (let prefix of tab_prefix_list) {
@@ -1208,16 +1182,21 @@ onUiLoaded(() => {
 
                 //get toolbar
                 extra_toolbar = gradioApp().getElementById(toolbar_id);
-                if (!extra_toolbar) {
-                    console.log("can not find toolbar with id: " + toolbar_id);
-                    continue;
-                }
 
                 //get official refresh button
                 refresh_btn_id = prefix + "_" + js_model_type + "_extra_refresh";
-                refresh_btn = gradioApp().getElementById(refresh_btn_id);
-                if (!refresh_btn) {
-                    console.log("can not find refresh_btn with id: " + refresh_btn_id);
+                refresh_btn = gradioApp().getElementById(refresh_btn_id)
+                    || gradioApp().getElementById(refresh_btn_id + "_internal");
+
+                // Forge Neo currently uses an internal hidden refresh button.
+                // Civitai Helper only needs the toolbar itself to add its helper refresh.
+                if (!extra_toolbar) {
+                    console.log("can not find extra network toolbar: " + toolbar_id);
+                    continue;
+                }
+
+                const ch_refresh_id = prefix + "_" + js_model_type + "_ch_refresh";
+                if (gradioApp().getElementById(ch_refresh_id)) {
                     continue;
                 }
 
@@ -1238,6 +1217,7 @@ onUiLoaded(() => {
 
                 // add refresh button to toolbar
                 let ch_refresh = document.createElement("button");
+                ch_refresh.id = ch_refresh_id;
                 ch_refresh.innerHTML = "🔁";
                 ch_refresh.title = "Refresh Civitai Helper's additional buttons";
                 ch_refresh.className = "extra-network-control--refresh";
@@ -1250,9 +1230,7 @@ onUiLoaded(() => {
                 //so here we modify it into 5 to add another refresh button for this addon
                 extra_toolbar.style.gridTemplateColumns = "minmax(0, auto) repeat(5, min-content)";
 
-                if (!Array.from(extra_toolbar.children).some((x) => x.title == ch_refresh.title)) {
-                    extra_toolbar.appendChild(ch_refresh);
-                }
+                extra_toolbar.appendChild(ch_refresh);
 
             }
 
@@ -1262,7 +1240,7 @@ onUiLoaded(() => {
         }
 
         //run it once
-        update_card_for_civitai_with_sd1_8();
+        //update_card_for_civitai_with_sd1_8();
 
     } else {
         for (let prefix of tab_prefix_list) {

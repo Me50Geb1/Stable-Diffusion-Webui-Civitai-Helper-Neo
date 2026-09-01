@@ -8,6 +8,7 @@ import requests
 from . import util
 from . import model
 from . import setting
+from PIL import Image
 
 suffix = ".civitai"
 
@@ -224,36 +225,25 @@ def load_model_info_by_search_term(model_type, search_term):
     else:
         model_folder_name = "Lora"
 
-    # model folder path could be customized
-    model_folder = model.folders[model_type]
+    # Model folder path can be customized and Forge Neo can expose multiple
+    # roots. Try each configured root and tolerate the root folder name being
+    # included in the Extra Networks search term.
+    for model_folder in model.get_model_roots(model_type):
+        candidate_base = model_info_base
+        model_folder_name = os.path.basename(model_folder)
 
-    model_folder_name = os.path.basename(model_folder)
+        if candidate_base.startswith(model_folder_name):
+            candidate_base = candidate_base[len(model_folder_name):]
+            if candidate_base.startswith("/") or candidate_base.startswith("\\"):
+                candidate_base = candidate_base[1:]
 
+        model_info_filename = candidate_base + suffix + model.info_ext
+        model_info_filepath = os.path.join(model_folder, model_info_filename)
+        if os.path.isfile(model_info_filepath):
+            return model.load_model_info(model_info_filepath)
 
-
-    # check if model folder is already in search_term
-    if model_info_base.startswith(model_folder_name):
-        # this is sd webui v1.8.0+'s search_term
-        # need to remove this model_folder_name+"/" or "\\" from model_info_base
-        model_info_base = model_info_base[len(model_folder_name):]
-
-        # util.printD("cut model_info_base: " + model_info_base)
-
-        if model_info_base.startswith("/") or model_info_base.startswith("\\"):
-            model_info_base = model_info_base[1:]
-
-        # util.printD("final model_info_base: " + model_info_base)
-
-
-    
-    model_info_filename = model_info_base + suffix + model.info_ext
-    model_info_filepath = os.path.join(model_folder, model_info_filename)
-
-    if not os.path.isfile(model_info_filepath):
-        util.printD("Can not find model info file: " + model_info_filepath)
-        return
-    
-    return model.load_model_info(model_info_filepath)
+    util.printD("Can not find model info file in configured roots: " + model_info_base)
+    return
 
 
 # get model info file's content by model path
@@ -281,7 +271,7 @@ def load_model_info_by_model_path(model_path):
 # return: model name list
 def get_model_names_by_type_and_filter(model_type:str, filter:dict) -> list:
     
-    model_folder = model.folders[model_type]
+    model_folders = model.get_model_roots(model_type)
 
     # set filter
     # only get models don't have a civitai info file
@@ -299,36 +289,36 @@ def get_model_names_by_type_and_filter(model_type:str, filter:dict) -> list:
     # get information from filter
     # only get those model names don't have a civitai model info file
     model_names = []
-    for root, dirs, files in os.walk(model_folder, followlinks=True):
-        for filename in files:
-            item = os.path.join(root, filename)
-            # check extension
-            base, ext = os.path.splitext(item)
-            if ext in model.exts:
-                # find a model
-
-                # check filter
-                if no_info_only:
-                    # check model info file
-                    info_file = base + suffix + model.info_ext
-                    if os.path.isfile(info_file):
-                        continue
-
-                if empty_info_only:
-                    # check model info file
-                    info_file = base + suffix + model.info_ext
-                    if os.path.isfile(info_file):
-                        # load model info
-                        model_info = model.load_model_info(info_file)
-                        # check content
-                        if model_info:
-                            if "id" in model_info.keys():
-                                # find a non-empty model info file
-                                continue
-
-                model_names.append(filename)
-
-
+    for model_folder in model_folders:
+        for root, dirs, files in os.walk(model_folder, followlinks=True):
+            for filename in files:
+                item = os.path.join(root, filename)
+                # check extension
+                base, ext = os.path.splitext(item)
+                if ext in model.exts:
+                    # find a model
+    
+                    # check filter
+                    if no_info_only:
+                        # check model info file
+                        info_file = base + suffix + model.info_ext
+                        if os.path.isfile(info_file):
+                            continue
+    
+                    if empty_info_only:
+                        # check model info file
+                        info_file = base + suffix + model.info_ext
+                        if os.path.isfile(info_file):
+                            # load model info
+                            model_info = model.load_model_info(info_file)
+                            # check content
+                            if model_info:
+                                if "id" in model_info.keys():
+                                    # find a non-empty model info file
+                                    continue
+    
+                    model_names.append(filename)
+    
     return model_names
 
 def get_model_names_by_input(model_type, empty_info_only):
@@ -381,8 +371,25 @@ def get_preview_image_by_model_path(model_path:str, max_size_preview, skip_nsfw_
     sec_preview = base+".preview.png"
     info_file = base + suffix + model.info_ext
 
+    # Check whether an existing preview is actually a readable image.
+    # A failed/interrupted download may leave an empty or truncated file.
+    preview_ok = False
+    if os.path.isfile(sec_preview):
+        try:
+            if os.path.getsize(sec_preview) > 0:
+                with Image.open(sec_preview) as preview_image:
+                    preview_image.verify()
+                preview_ok = True
+        except Exception as e:
+            util.printD("Invalid preview image detected: " + sec_preview)
+            util.printD("Reason: " + str(e))
+            try:
+                os.remove(sec_preview)
+            except Exception as remove_error:
+                util.printD("Failed to remove invalid preview: " + str(remove_error))
+
     # check preview image
-    if not os.path.isfile(sec_preview):
+    if not preview_ok:
         # need to download preview image
         util.printD("Checking preview image for model: " + model_path)
         # load model_info file
@@ -656,56 +663,56 @@ def check_models_new_version_by_model_types(model_types:list, delay:float=1, che
     new_versions = []
 
     # walk all models
-    for model_type, model_folder in model.folders.items():
+    for model_type in model.folders.keys():
         if model_type not in mts:
             continue
 
-        util.printD("Scanning path: " + model_folder)
-        for root, dirs, files in os.walk(model_folder, followlinks=True):
-            for filename in files:
-                # check ext
-                item = os.path.join(root, filename)
-                base, ext = os.path.splitext(item)
-                if ext in model.exts:
-                    # find a model
-                    r = check_model_new_version_by_path(item, delay)
-
-                    if not r:
-                        continue
-
-                    model_path, model_id, model_name, current_version_id, new_version_name, description, downloadUrl, img_url = r
-                    # check exist
-                    if not current_version_id:
-                        continue
-
-                    # check this version id in list
-                    is_already_in_list = False
-                    for new_version in new_versions:
-                        if current_version_id == new_version[3]:
-                            # already in list
-                            is_already_in_list = True
-                            break
-
-                    if is_already_in_list:
-                        util.printD("New version is already in list")
-                        continue
-
-                    # search this new version id to check if this model is already downloaded
-                    if check_new_ver_exist_in_all_folder:
-                        # walk from top folder for this model type
-                        target_model_info = search_local_model_info_by_version_id(model_folder, current_version_id, check_new_ver_exist_in_all_folder)
-                    else:
-                        # only check current folder
-                        target_model_info = search_local_model_info_by_version_id(root, current_version_id, check_new_ver_exist_in_all_folder)
-                    if target_model_info:
-                        util.printD("New version is already existed")
-                        continue
-
-                    # add to list
-                    new_versions.append(r)
-
-
-
+        for model_folder in model.get_model_roots(model_type):
+            util.printD("Scanning path: " + model_folder)
+            for root, dirs, files in os.walk(model_folder, followlinks=True):
+                for filename in files:
+                    # check ext
+                    item = os.path.join(root, filename)
+                    base, ext = os.path.splitext(item)
+                    if ext in model.exts:
+                        # find a model
+                        r = check_model_new_version_by_path(item, delay)
+    
+                        if not r:
+                            continue
+    
+                        model_path, model_id, model_name, current_version_id, new_version_name, description, downloadUrl, img_url = r
+                        # check exist
+                        if not current_version_id:
+                            continue
+    
+                        # check this version id in list
+                        is_already_in_list = False
+                        for new_version in new_versions:
+                            if current_version_id == new_version[3]:
+                                # already in list
+                                is_already_in_list = True
+                                break
+    
+                        if is_already_in_list:
+                            util.printD("New version is already in list")
+                            continue
+    
+                        # search this new version id to check if this model is already downloaded
+                        if check_new_ver_exist_in_all_folder:
+                            # walk from top folder for this model type
+                            target_model_info = search_local_model_info_by_version_id(model_folder, current_version_id, check_new_ver_exist_in_all_folder)
+                        else:
+                            # only check current folder
+                            target_model_info = search_local_model_info_by_version_id(root, current_version_id, check_new_ver_exist_in_all_folder)
+                        if target_model_info:
+                            util.printD("New version is already existed")
+                            continue
+    
+                        # add to list
+                        new_versions.append(r)
+    
+    
 
     return new_versions
 

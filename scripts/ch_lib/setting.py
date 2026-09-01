@@ -18,7 +18,7 @@ data = {
     "general":{
         "open_url_with_js": True,
         "proxy": "",
-        "civitai_domain": "civitai.com"
+        "civitai_domain": "civitai.red"
     },
     "tool":{
     }
@@ -81,7 +81,7 @@ def load():
         data["general"]["check_new_ver_exist_in_all_folder"] = False
 
     if "civitai_domain" not in data["general"].keys():
-        data["general"]["civitai_domain"] = "civitai.com"
+        data["general"]["civitai_domain"] = "civitai.red"
 
 
 

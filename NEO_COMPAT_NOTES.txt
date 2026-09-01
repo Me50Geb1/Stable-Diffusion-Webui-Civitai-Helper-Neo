@@ -1,0 +1,11 @@
+Forge Neo compatibility patch 3
+
+Changes from compat2:
+- Scan and model lookup support Forge Neo multiple --ckpt-dirs / --lora-dirs roots.
+- Downloads still target the primary model folder for predictable behavior.
+- Extra Networks JS no longer depends on legacy footer version markup.
+- Extra Networks refresh helper recognizes Neo's *_extra_refresh_internal IDs.
+- Prevent duplicate Civitai Helper refresh buttons after UI rerenders.
+- Retains interrupted/corrupt preview retry handling from compat2.
+
+compat4-red: Default/active Civitai domain changed to civitai.red. Existing civitai.com setting is migrated to civitai.red at startup.

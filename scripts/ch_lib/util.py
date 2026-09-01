@@ -6,7 +6,7 @@ import requests
 import shutil
 
 
-version = "1.12.0"
+version = "1.12.0-neo-compat4-red"
 
 def_headers = {'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
                "Authorization": ""}
@@ -14,7 +14,7 @@ def_headers = {'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) Appl
 
 proxies = None
 civitai_api_key = ""
-civitai_domain = "civitai.com"
+civitai_domain = "civitai.red"
 
 
 # print for debugging
@@ -50,20 +50,51 @@ def gen_file_sha256(filname):
 
 # get preview image
 def download_file(url, path):
-    printD("Downloading file from: " + url)
-    # get file
-    r = requests.get(url, stream=True, headers=def_headers, proxies=proxies)
-    if not r.ok:
-        printD("Get error code: " + str(r.status_code))
-        printD(r.text)
-        return
-    
-    # write to file
-    with open(os.path.realpath(path), 'wb') as f:
-        r.raw.decode_content = True
-        shutil.copyfileobj(r.raw, f)
+    """Download to a temporary file and replace the destination only on success.
 
-    printD("File downloaded to: " + path)
+    This prevents an interrupted/failed download from leaving a partial preview
+    file that would be mistaken for a valid image on the next model scan.
+    Returns True on success, otherwise False.
+    """
+    printD("Downloading file from: " + url)
+    temp_path = path + ".part"
+
+    try:
+        # Remove a stale temporary file from an earlier interrupted run.
+        if os.path.isfile(temp_path):
+            os.remove(temp_path)
+
+        r = requests.get(url, stream=True, headers=def_headers, proxies=proxies, timeout=60)
+        if not r.ok:
+            printD("Get error code: " + str(r.status_code))
+            printD(r.text)
+            return False
+
+        with open(os.path.realpath(temp_path), 'wb') as f:
+            r.raw.decode_content = True
+            shutil.copyfileobj(r.raw, f)
+
+        # An empty file is never a valid preview.  Leave no destination file so
+        # the next scan automatically tries the download again.
+        if not os.path.isfile(temp_path) or os.path.getsize(temp_path) == 0:
+            printD("Downloaded preview is empty. It will be retried on next scan.")
+            if os.path.isfile(temp_path):
+                os.remove(temp_path)
+            return False
+
+        os.replace(temp_path, os.path.realpath(path))
+        printD("File downloaded to: " + path)
+        return True
+
+    except Exception as e:
+        printD("Download failed: " + str(e))
+        printD("Preview will be retried on next scan.")
+        try:
+            if os.path.isfile(temp_path):
+                os.remove(temp_path)
+        except Exception:
+            pass
+        return False
 
 # get subfolder list
 def get_subfolders(folder:str) -> list:

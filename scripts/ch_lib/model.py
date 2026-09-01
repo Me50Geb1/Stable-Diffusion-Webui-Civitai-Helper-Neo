@@ -31,55 +31,89 @@ folders = {
     "lora": os.path.join(root_path, "models", "Lora"),
 }
 
+# Forge Neo can expose multiple checkpoint / LoRA roots. ``folders`` remains
+# the primary writable destination for backwards compatibility (downloads,
+# etc.), while ``model_roots`` is used for scanning and lookup.
+model_roots = {k: [v] for k, v in folders.items()}
+
+def _dedupe_existing_paths(paths):
+    result = []
+    seen = set()
+    for path in paths:
+        if not path:
+            continue
+        path = os.path.abspath(os.path.expanduser(str(path)))
+        key = os.path.normcase(os.path.realpath(path))
+        if key in seen or not os.path.isdir(path):
+            continue
+        seen.add(key)
+        result.append(path)
+    return result
+
+def get_model_roots(model_type):
+    roots = model_roots.get(model_type) or []
+    if not roots and model_type in folders:
+        roots = [folders[model_type]]
+    return roots
+
 exts = (".bin", ".pt", ".safetensors", ".ckpt")
 info_ext = ".info"
 vae_suffix = ".vae"
 
 
-# get cusomter model path
-def _first_existing_dir(*values):
-    for value in values:
-        if not value:
-            continue
-
-        if isinstance(value, (list, tuple, set)):
-            result = _first_existing_dir(*value)
-            if result:
-                return result
-            continue
-
-        path = os.fspath(value)
-        if os.path.isdir(path):
-            return path
-
-
+# get custom model path
 def get_custom_model_folder():
-    util.printD("Get Custom Model Folder")
+    """Resolve model folders across A1111 / Forge / Forge Neo.
+
+    Forge Neo may expose plural ``ckpt_dirs`` / ``lora_dirs`` options and may
+    omit legacy options such as ``hypernetwork_dir``.  Older versions of this
+    extension accessed those attributes directly, which could abort extension
+    loading with AttributeError.
+
+    The current Civitai Helper data model supports one root folder per model
+    type.  For Neo's plural extra-folder options we keep the WebUI default root
+    as the primary folder for now; this is intentional for the first
+    compatibility stage.
+    """
+    util.printD("Get Custom Model Folder (A1111/Forge/Forge Neo compatible)")
 
     global folders
 
-    embeddings_dir = _first_existing_dir(getattr(shared.cmd_opts, "embeddings_dir", None))
-    if embeddings_dir:
-        folders["ti"] = embeddings_dir
+    # Neo moved the default embeddings directory under models/embeddings and
+    # normally exposes its resolved path through cmd_opts.embeddings_dir.
+    embeddings_dir = getattr(shared.cmd_opts, "embeddings_dir", None)
+    if embeddings_dir and os.path.isdir(embeddings_dir):
+        folders["ti"] = os.path.abspath(embeddings_dir)
 
-    hypernetwork_dir = _first_existing_dir(getattr(shared.cmd_opts, "hypernetwork_dir", None))
-    if hypernetwork_dir:
-        folders["hyper"] = hypernetwork_dir
+    # Hypernetworks are legacy and the option is absent in some Neo builds.
+    hypernetwork_dir = getattr(shared.cmd_opts, "hypernetwork_dir", None)
+    if hypernetwork_dir and os.path.isdir(hypernetwork_dir):
+        folders["hyper"] = os.path.abspath(hypernetwork_dir)
 
-    ckpt_dir = _first_existing_dir(
-        getattr(shared.cmd_opts, "ckpt_dir", None),
-        getattr(shared.cmd_opts, "ckpt_dirs", None),
-    )
-    if ckpt_dir:
-        folders["ckp"] = ckpt_dir
+    # Legacy A1111 / reForge singular options.
+    ckpt_dir = getattr(shared.cmd_opts, "ckpt_dir", None)
+    if ckpt_dir and os.path.isdir(ckpt_dir):
+        folders["ckp"] = os.path.abspath(ckpt_dir)
 
-    lora_dir = _first_existing_dir(
-        getattr(shared.cmd_opts, "lora_dir", None),
-        getattr(shared.cmd_opts, "lora_dirs", None),
-    )
-    if lora_dir:
-        folders["lora"] = lora_dir
+    lora_dir = getattr(shared.cmd_opts, "lora_dir", None)
+    if lora_dir and os.path.isdir(lora_dir):
+        folders["lora"] = os.path.abspath(lora_dir)
 
+    # Forge Neo uses plural lists for additional model directories.  Scan and
+    # card lookup now include those roots, while downloads still use the
+    # primary folder above so the old UI remains unambiguous.
+    ckpt_dirs = getattr(shared.cmd_opts, "ckpt_dirs", None) or []
+    lora_dirs = getattr(shared.cmd_opts, "lora_dirs", None) or []
+
+    model_roots["ti"] = _dedupe_existing_paths([folders["ti"]])
+    model_roots["hyper"] = _dedupe_existing_paths([folders["hyper"]])
+    model_roots["ckp"] = _dedupe_existing_paths([folders["ckp"], *ckpt_dirs])
+    model_roots["lora"] = _dedupe_existing_paths([folders["lora"], *lora_dirs])
+
+    for model_type, folder in folders.items():
+        util.printD(f"Primary model folder [{model_type}]: {folder}")
+        for extra in get_model_roots(model_type)[1:]:
+            util.printD(f"Additional model folder [{model_type}]: {extra}")
 
 
 
@@ -109,23 +143,18 @@ def load_model_info(path):
 # parameter: model_type - string
 # return: model name list
 def get_model_names_by_type(model_type:str) -> list:
-    
-    model_folder = folders[model_type]
-
-    # get information from filter
-    # only get those model names don't have a civitai model info file
     model_names = []
-    for root, dirs, files in os.walk(model_folder, followlinks=True):
-        for filename in files:
-            item = os.path.join(root, filename)
-            # check extension
-            base, ext = os.path.splitext(item)
-            if ext in exts:
-                # find a model
-                model_names.append(filename)
-
-
+    seen = set()
+    for model_folder in get_model_roots(model_type):
+        for root, dirs, files in os.walk(model_folder, followlinks=True):
+            for filename in files:
+                item = os.path.join(root, filename)
+                _, ext = os.path.splitext(item)
+                if ext.lower() in exts and filename not in seen:
+                    seen.add(filename)
+                    model_names.append(filename)
     return model_names
+
 
 
 # return 2 values: (model_root, model_path)
@@ -134,26 +163,15 @@ def get_model_path_by_type_and_name(model_type:str, model_name:str) -> str:
     if model_type not in folders.keys():
         util.printD("unknown model_type: " + model_type)
         return
-    
     if not model_name:
         util.printD("model name can not be empty")
         return
-    
-    folder = folders[model_type]
 
-    # model could be in subfolder, need to walk.
-    model_root = ""
-    model_path = ""
-    for root, dirs, files in os.walk(folder, followlinks=True):
-        for filename in files:
-            if filename == model_name:
-                # find model
-                model_root = root
-                model_path = os.path.join(root, filename)
-                return (model_root, model_path)
-
+    for folder in get_model_roots(model_type):
+        for root, dirs, files in os.walk(folder, followlinks=True):
+            if model_name in files:
+                return (root, os.path.join(root, model_name))
     return
-
 
 
 
@@ -213,17 +231,11 @@ def get_model_path_by_search_term(model_type:str, search_term:str):
         if not model_sub_path.endswith(".pt"):
             model_sub_path = model_sub_path+".pt"
 
-    model_folder = folders[model_type]
+    for model_folder in get_model_roots(model_type):
+        model_path = os.path.join(model_folder, model_sub_path)
+        if os.path.isfile(model_path):
+            return model_path
 
-    model_path = os.path.join(model_folder, model_sub_path)
-
-    print("model_folder: " + model_folder)
-    print("model_sub_path: " + model_sub_path)
-    print("model_path: " + model_path)
-
-    if not os.path.isfile(model_path):
-        util.printD("Can not find model file: " + model_path)
-        return
-    
-    return model_path
+    util.printD("Can not find model file in configured roots: " + model_sub_path)
+    return
 
