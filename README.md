@@ -1,3 +1,71 @@
+# Stable-Diffusion-Webui-Civitai-Helper Neo
+
+> [!NOTE]
+> This is an unofficial Forge Neo compatibility fork of
+> [butaixianran/Stable-Diffusion-Webui-Civitai-Helper](https://github.com/butaixianran/Stable-Diffusion-Webui-Civitai-Helper).
+>
+> This fork is not maintained by the original author.
+
+**sd-webui-forge-neo** 向けに互換性修正を加えた Civitai Helper です。
+
+元の Civitai Helper の機能を維持しながら、Forge Neo で動作するように修正しています。
+
+## Forge Neo Changes
+
+- sd-webui-forge-neo のモデルディレクトリ構成に対応
+- 複数の Checkpoint / LoRA ディレクトリに対応
+- Forge Neo の Embeddings 配置に対応
+- Hypernetwork 関連の互換性調整
+- Forge Neo / Gradio 環境向けの UI 互換性修正
+- Extra Networks の Refresh 処理に対応
+- Civitai API / モデルページの `civitai.red` 対応
+- Preview画像用の `image.civitai.com` は従来どおり使用
+- Preview画像取得失敗時の再試行処理
+- `.part` ファイルを利用した安全なPreviewダウンロード
+- 破損したPreview画像の検出と再取得
+- 複数モデルフォルダのスキャンに対応
+
+## Installation
+
+Forge Neo の `extensions` フォルダ内でCloneします。
+
+    git clone -b forge-neo https://github.com/Me50Geb1/Stable-Diffusion-Webui-Civitai-Helper-Neo.git
+
+配置例:
+
+    sd-webui-forge-neo/
+    └─ extensions/
+       └─ Stable-Diffusion-Webui-Civitai-Helper-Neo/
+
+インストール後、Forge Neoを再起動してください。
+
+## Important
+
+このForkでは主に **Forge Neoとの互換性維持** を目的としています。
+
+元プロジェクトとは別の非公式Forkです。
+
+不具合を元作者へ報告する場合、このFork固有の問題でないことを確認してください。
+
+## Support Notice
+
+This Forge Neo compatibility version was modified with the assistance of ChatGPT.
+
+The repository owner may not be able to answer technical questions, provide support, or respond to implementation-related inquiries.
+
+このForge Neo対応版はChatGPTの支援により修正されています。
+
+リポジトリ所有者は技術的な質問、サポート、実装に関する問い合わせには対応できない場合があります。
+
+## Neo Compatibility Notes
+
+See [NEO_COMPAT_NOTES.txt](NEO_COMPAT_NOTES.txt).
+
+---
+
+# Original README
+
+
 ### Language
 [中文](README.cn.md)   
 [日本語](README.jp.md)  
