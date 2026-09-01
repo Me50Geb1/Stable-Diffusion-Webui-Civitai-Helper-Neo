@@ -1,3 +1,15 @@
+## License / Copyright
+
+This repository is a modified fork of the original Civitai Helper project.
+
+Copyright and licensing of the original source code remain with the original author(s).
+No additional license is granted here for the original source code.
+
+このリポジトリは元の Civitai Helper を改変したForkです。
+
+元のソースコードに関する著作権およびライセンス上の権利は、
+元の作者および各権利者に帰属します。
+
 # Stable-Diffusion-Webui-Civitai-Helper Neo
 
 > [!NOTE]
@@ -7,6 +19,7 @@
 > This fork is not maintained by the original author.
 
 **sd-webui-forge-neo** 向けに互換性修正を加えた Civitai Helper です。
+
 
 元の Civitai Helper の機能を維持しながら、Forge Neo で動作するように修正しています。
 
